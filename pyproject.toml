@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calvatinize"
+version = "0.1.0"
+description = "Martinize and simplify small molecules"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.7,<3.14"
+authors = [
+    { name = "Soeren von Buelow", email = "soeren.buelow@bindresearch.org" },
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "numpy",
+    "MDAnalysis",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.scripts]
+autoprot = "calvatinize.cli:run_calvatinize"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.ruff]
+line-length = 127
+
+[tool.ruff.lint]
+select = ["E", "F"]
