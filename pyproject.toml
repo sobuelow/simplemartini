@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "calvatinize"
+name = "simplemartini"
 version = "0.1.0"
 description = "Martinize and simplify small molecules"
 readme = "README.md"
@@ -29,7 +29,7 @@ dev = [
 ]
 
 [project.scripts]
-autoprot = "calvatinize.cli:run_calvatinize"
+autoprot = "simplemartini.cli:run_simplemartini"
 
 [tool.setuptools.packages.find]
 where = ["."]
