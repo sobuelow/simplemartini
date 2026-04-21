@@ -1,18 +1,11 @@
 import os
 import re
+import tempfile
 
 import MDAnalysis as mda
 import numpy as np
 
-# import itertools
-
-# from argparse import ArgumentParser
-# parser = ArgumentParser()
-# parser.add_argument('--name',nargs='?',required=True,type=str)
-# parser.add_argument('--path_in',nargs='?',required=True,type=str)
-# parser.add_argument('--path_out',nargs='?',required=True,type=str)
-# parser.add_argument('--qtype',type=str,default='Q3')
-# args = parser.parse_args()
+from cgparam import CGParam
 
 def load_itp(path,name):
     if not os.path.isfile(f'{path}/{name}.itp'):
@@ -287,3 +280,9 @@ def simplify(name,path_in,path_out,qtype):
 
     if path_in != path_out:
         os.system(f'cp {path_in}/{name}.gro {path_out}/')
+
+def run_simplemartini(name, mol, qtype = 'Qx', path_out = 'output'):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cgp = CGParam()
+        cgp.run_pipeline(name, mol, path_out = tmpdir) # mol_martini = ...
+    simplify(name,tmpdir,path_out,qtype) # read in mol_martini, return an object
