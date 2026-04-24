@@ -38,8 +38,7 @@ def parse_input(lines,name,qtype):
             start = re.search('\[',line).span()[0]
             end = re.search('\]',line).span()[0]
             section = line[start+1:end].replace(' ','')
-            # print(start, end)
-            # print(section)
+
             continue
         if re.match(r'#ifdef',line):
             section = 'ifdef'
@@ -81,14 +80,14 @@ def read_vsite(spl):
     return vsite 
 
 def read_bond(spl):
-    # print(spl)
+
     idxs = [int(spl[0]),int(spl[1])]
     length = float(spl[3])
     k = float(spl[4])
     return [idxs, length, k]
 
 def read_constraint(spl,k=20000.):
-    # print(spl)
+
     idxs = [int(spl[0]),int(spl[1])]
     length = float(spl[3])
     return [idxs, length, k]
@@ -102,13 +101,11 @@ def read_dihedral(spl):
         raise
 
 def analyse_dihedrals(dihedrals):
-    print(dihedrals)
+
     flagged_idxs = []
     for idx, d0 in enumerate(dihedrals[:-1]):
-        print(d0)
         d0 = np.array(d0[:-1]) # without angle
         for jdx, d1 in enumerate(dihedrals[idx+1:],start=idx+1):
-            print(d1)
             d1 = np.array(d1[:-1]) # without angle
             inters = np.intersect1d(d0,d1)
             if len(inters) >= 3:
@@ -126,16 +123,12 @@ def analyse_dihedrals(dihedrals):
 
 def repl_dihedral(dihedral,u,bonds,k=20000.):
     for idx, di in enumerate(dihedral[:-2]):
-        # print(di)
         for dj in dihedral[idx+1:-1]:
-            # print(di, dj)
             found = False # already present in bonds
             for bond in bonds:
                 bond_idxs = bond[0]
-                # print(bond_idxs)
                 if (di in bond_idxs) and (dj in bond_idxs):
                     found = True
-                    # print('found')
                     break
             if not found:
                 xi = u.atoms[di-1].position / 10.
@@ -143,7 +136,6 @@ def repl_dihedral(dihedral,u,bonds,k=20000.):
                 dist = np.linalg.norm(xj - xi)
                 dij = [di,dj]
                 newbond = [[min(dij),max(dij)], dist, k]
-                print(f'Adding bond {newbond}')
                 bonds.append(newbond)
     return bonds
 
@@ -156,7 +148,6 @@ def repl_dihedral(dihedral,u,bonds,k=20000.):
 #     return(A,B,C)
 
 def add_vsite_bonds(vsite,u,bonds,k=20000.):
-    # print(vsite)
     xs = []
     weights = []
     other_indices = []
@@ -191,14 +182,14 @@ def repartition_masses(vsite,u,scale=1.):
     vsite_idx = vsite[0] # 1-based
     mass_vsite = 0.
     n = len(vsite)
-    # print(u.atoms.masses)
+
     for idx, w in vsite[1:]: # 1-based
         m = u.atoms[idx-1].mass # 0-based
         m_partition = m / n * scale
         mass_vsite += m_partition
         u.atoms[idx-1].mass = m - m_partition
     u.atoms[vsite_idx-1].mass = mass_vsite
-    # print(u.atoms.masses)
+
     return u
 
 def make_atomlines(u):
@@ -262,8 +253,8 @@ def simplify(name,path_in,path_out,qtype):
         # dihedrals.append(dihedral)
 
     flagged_dihedrals, kept_dihedrals = analyse_dihedrals(dihedrals)
-    print(f'Replace: {flagged_dihedrals}')
-    print(f'Keep: {kept_dihedrals}')
+    # print(f'Replace: {flagged_dihedrals}')
+    # print(f'Keep: {kept_dihedrals}')
 
     for dihedral in flagged_dihedrals:
         bonds = repl_dihedral(dihedral,u,bonds)
@@ -281,8 +272,8 @@ def simplify(name,path_in,path_out,qtype):
     if path_in != path_out:
         os.system(f'cp {path_in}/{name}.gro {path_out}/')
 
-def run_simplemartini(name, mol, qtype = 'Qx', path_out = 'output'):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cgp = CGParam()
-        cgp.run_pipeline(name, mol, path_out = tmpdir) # mol_martini = ...
-    simplify(name,tmpdir,path_out,qtype) # read in mol_martini, return an object
+def run_simplemartini(name, mol, qtype = 'Qx', path_cgparam='cgparam', path_out = 'output'):
+    # with tempfile.TemporaryDirectory() as tmpdir:
+    cgp = CGParam()
+    cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
+    simplify(name,path_cgparam,path_out,qtype) # read in mol_martini, return an object
