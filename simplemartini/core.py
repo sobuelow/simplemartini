@@ -5,7 +5,7 @@ import tempfile
 import MDAnalysis as mda
 import numpy as np
 
-from cgparam import CGParam
+from cgparam.core import CGParam
 
 def load_itp(path,name):
     if not os.path.isfile(f'{path}/{name}.itp'):
@@ -274,6 +274,7 @@ def simplify(name,path_in,path_out,qtype):
 
 def run_simplemartini(name, mol, qtype = 'Qx', path_cgparam='cgparam', path_out = 'output'):
     # with tempfile.TemporaryDirectory() as tmpdir:
+    print(name, mol, qtype, path_cgparam, path_out)
     cgp = CGParam()
     cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
     simplify(name,path_cgparam,path_out,qtype) # read in mol_martini, return an object
