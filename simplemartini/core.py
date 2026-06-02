@@ -192,10 +192,11 @@ def repartition_masses(vsite,u,scale=1.):
 
     return u
 
-def make_atomlines(u):
+def make_atomlines(u,qtype="Qx"):
     lines_atoms = []
     for idx, at in enumerate(u.atoms):
-        line = f'{idx+1:>5d}{at.type:>5s}    1{at.resname:>5s}{at.name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
+        name = re.sub('Qx',qtype,str(at.name))
+        line = f'{idx+1:>5d}{at.type:>5s}    1{at.resname:>5s}{name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
         lines_atoms.append(line)
     return lines_atoms
 
@@ -259,7 +260,7 @@ def simplify(name,path_in,path_out,qtype):
     for dihedral in flagged_dihedrals:
         bonds = repl_dihedral(dihedral,u,bonds)
 
-    lines_atoms = make_atomlines(u)
+    lines_atoms = make_atomlines(u,qtype=qtype)
     lines_bonds = make_bondlines(bonds)
 
     lines_dihedrals = make_dihedrallines(kept_dihedrals) # lines_dihedrals
