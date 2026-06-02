@@ -195,8 +195,8 @@ def repartition_masses(vsite,u,scale=1.):
 def make_atomlines(u,qtype="Qx"):
     lines_atoms = []
     for idx, at in enumerate(u.atoms):
-        name = re.sub('Qx',qtype,str(at.name))
-        line = f'{idx+1:>5d}{at.type:>5s}    1{at.resname:>5s}{name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
+        attype = re.sub('Qx',qtype,str(at.type))
+        line = f'{idx+1:>5d}{attype:>5s}    1{at.resname:>5s}{at.name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
         lines_atoms.append(line)
     return lines_atoms
 
