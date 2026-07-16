@@ -7,6 +7,8 @@ import numpy as np
 
 from cgparam.core import CGParam
 
+from .charges import get_heavy_atom_charges
+
 def load_itp(path,name):
     if not os.path.isfile(f'{path}/{name}.itp'):
         print(f'{path}/{name}.itp not found.')
@@ -242,8 +244,16 @@ def write_section(f,header,lines):
         f.write(line)
     f.write('\n')
 
-def simplify(name,path_in,path_out,qtype):
+# def assign_ashgc_charges(u,charges_ashgc):
+    # for 
+
+def simplify(name,path_in,path_out,qtype,qs_cg = []):
+
     u = mda.Universe(f'{path_in}/{name}.itp',f'{path_in}/{name}.gro')
+
+    if len(qs_cg) > 0:
+        u.atoms.charges = qs_cg
+
     lines = load_itp(path_in,name)
     lines_moleculetype, lines_atoms, lines_angles, dihedrals, bonds, vsites = parse_input(lines,name,qtype)
 
@@ -273,9 +283,32 @@ def simplify(name,path_in,path_out,qtype):
     if path_in != path_out:
         os.system(f'cp {path_in}/{name}.gro {path_out}/')
 
-def run_simplemartini(name, mol, qtype = 'Qx', path_cgparam='cgparam', path_out = 'output'):
+def coarse_grain_charges(beads,charges_heavy):
+    qs_cg = []
+    for bead in beads:
+        q = 0.
+        for at_idx in bead:
+            q += charges_heavy[at_idx]
+        qs_cg.append(q)
+    return np.array(qs_cg)
+
+def run_simplemartini(
+        name,
+        mol,
+        qtype = 'Q1',
+        path_cgparam='cgparam',
+        path_out = 'output',
+        calc_charges = True,
+    ):
     # with tempfile.TemporaryDirectory() as tmpdir:
     print(name, mol, qtype, path_cgparam, path_out)
     cgp = CGParam()
     cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
-    simplify(name,path_cgparam,path_out,qtype) # read in mol_martini, return an object
+
+    if calc_charges:
+        mol, charges_heavy, at_map_ids = get_heavy_atom_charges(cgp.mol)
+        qs_cg = coarse_grain_charges(cgp.beads, charges_heavy)
+    else:
+        qs_cg = np.array([])
+
+    simplify(name,path_cgparam,path_out,qtype,qs_cg=qs_cg) # read in mol_martini, return an object
