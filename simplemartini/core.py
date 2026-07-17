@@ -48,7 +48,7 @@ def parse_input(lines,name,qtype):
             line = re.sub('MOL',name,line)
             lines_moleculetype.append(line)
         elif section == 'atoms':
-            line = re.sub('Qx',qtype,line)
+            # line = re.sub('Qx',qtype,line)
             lines_atoms.append(line)
         elif section == 'angles':
             lines_angles.append(line)
@@ -194,11 +194,11 @@ def repartition_masses(vsite,u,scale=1.):
 
     return u
 
-def make_atomlines(u,qtype="Qx"):
+def make_atomlines(u):
     lines_atoms = []
     for idx, at in enumerate(u.atoms):
-        attype = re.sub('Qx',qtype,str(at.type))
-        line = f'{idx+1:>5d}{attype:>5s}    1{at.resname:>5s}{at.name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
+        # attype = re.sub('Qx',qtype,str(at.type))
+        line = f'{idx+1:>5d}{at.type:>5s}    1{at.resname:>5s}{at.name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
         lines_atoms.append(line)
     return lines_atoms
 
@@ -247,7 +247,7 @@ def write_section(f,header,lines):
 # def assign_ashgc_charges(u,charges_ashgc):
     # for 
 
-def simplify(name,path_in,path_out,qtype,qs_cg = []):
+def simplify(name,path_in,path_out,qs_cg = []):
 
     u = mda.Universe(f'{path_in}/{name}.itp',f'{path_in}/{name}.gro')
 
@@ -255,7 +255,7 @@ def simplify(name,path_in,path_out,qtype,qs_cg = []):
         u.atoms.charges = qs_cg
 
     lines = load_itp(path_in,name)
-    lines_moleculetype, lines_atoms, lines_angles, dihedrals, bonds, vsites = parse_input(lines,name,qtype)
+    lines_moleculetype, lines_atoms, lines_angles, dihedrals, bonds, vsites = parse_input(lines,name)
 
     for vsite in vsites:
         bonds = add_vsite_bonds(vsite,u,bonds)
@@ -270,7 +270,7 @@ def simplify(name,path_in,path_out,qtype,qs_cg = []):
     for dihedral in flagged_dihedrals:
         bonds = repl_dihedral(dihedral,u,bonds)
 
-    lines_atoms = make_atomlines(u,qtype=qtype)
+    lines_atoms = make_atomlines(u)
     lines_bonds = make_bondlines(bonds)
 
     lines_dihedrals = make_dihedrallines(kept_dihedrals) # lines_dihedrals
@@ -295,13 +295,12 @@ def coarse_grain_charges(beads,charges_heavy):
 def run_simplemartini(
         name,
         mol,
-        qtype = 'Q1',
         path_cgparam='cgparam',
         path_out = 'output',
         calc_charges = True,
     ):
     # with tempfile.TemporaryDirectory() as tmpdir:
-    print(name, mol, qtype, path_cgparam, path_out)
+    print(name, mol, path_cgparam, path_out)
     cgp = CGParam()
     cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
 
@@ -311,4 +310,4 @@ def run_simplemartini(
     else:
         qs_cg = np.array([])
 
-    simplify(name,path_cgparam,path_out,qtype,qs_cg=qs_cg) # read in mol_martini, return an object
+    simplify(name,path_cgparam,path_out,qs_cg=qs_cg) # read in mol_martini, return an object
