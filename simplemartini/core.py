@@ -2,6 +2,15 @@ import os
 import re
 import tempfile
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"'xdrlib' is deprecated and slated for removal in Python 3\.13",
+    category=DeprecationWarning,
+    module=r"MDAnalysis\.topology\.TPRParser",
+)
+
 import MDAnalysis as mda
 import numpy as np
 
@@ -16,7 +25,7 @@ def load_itp(path,name):
     with open(f'{path}/{name}.itp','r') as f_in:
         return f_in.readlines()
 
-def parse_input(lines,name,qtype):
+def parse_input(lines,name):
     # Parse itp input lines
     section = None
     # atoms = []
@@ -37,8 +46,8 @@ def parse_input(lines,name,qtype):
             continue
         # if len(re.findall('\[',line)) > 0:
         if line[0] == '[':
-            start = re.search('\[',line).span()[0]
-            end = re.search('\]',line).span()[0]
+            start = re.search(r'\[',line).span()[0]
+            end = re.search(r'\]',line).span()[0]
             section = line[start+1:end].replace(' ','')
 
             continue
@@ -48,7 +57,6 @@ def parse_input(lines,name,qtype):
             line = re.sub('MOL',name,line)
             lines_moleculetype.append(line)
         elif section == 'atoms':
-            # line = re.sub('Qx',qtype,line)
             lines_atoms.append(line)
         elif section == 'angles':
             lines_angles.append(line)
@@ -197,7 +205,6 @@ def repartition_masses(vsite,u,scale=1.):
 def make_atomlines(u):
     lines_atoms = []
     for idx, at in enumerate(u.atoms):
-        # attype = re.sub('Qx',qtype,str(at.type))
         line = f'{idx+1:>5d}{at.type:>5s}    1{at.resname:>5s}{at.name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
         lines_atoms.append(line)
     return lines_atoms
