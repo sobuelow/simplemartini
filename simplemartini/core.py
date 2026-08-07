@@ -307,7 +307,7 @@ def run_simplemartini(
         calc_charges = True,
     ):
     # with tempfile.TemporaryDirectory() as tmpdir:
-    print(name, mol, path_cgparam, path_out)
+    # print(name, mol, path_cgparam, path_out)
     cgp = CGParam()
     cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
 
