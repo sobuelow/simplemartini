@@ -78,7 +78,25 @@ def fold_hydrogen_charges_to_heavy_atoms(mol: Chem.Mol, charges) -> tuple[np.nda
 
     return np.asarray(heavy_charges), heavy_atom_indices
 
+def check_elements(mol):
+    allowed_elements = ['C', 'O', 'H', 'N', 'S', 'F', 'Br', 'Cl', 'I', 'P']
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() not in allowed_elements:
+            return False
+    return True
+
+def get_formal_charges(mol):
+    charges = []
+    for atom in mol.GetAtoms():
+        charges.append(atom.GetFormalCharge())
+    charges = np.array(charges)
+    return charges
+
 def get_heavy_atom_charges(mol_input):
-    mol, charges = ashgc_charges_in_rdkit_order(mol_input)
+    if check_elements(mol_input):
+        mol, charges = ashgc_charges_in_rdkit_order(mol_input)
+    else:
+        mol = Chem.Mol(mol_input)
+        charges = get_formal_charges(mol)
     charges_heavy, heavy_atom_indices = fold_hydrogen_charges_to_heavy_atoms(mol,charges)
     return mol, charges_heavy, heavy_atom_indices
