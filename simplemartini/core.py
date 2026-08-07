@@ -188,20 +188,6 @@ def make_bondlines(bonds):
         lines_bonds.append(line)
     return lines_bonds
 
-def repartition_masses(vsite,u,scale=1.):
-    vsite_idx = vsite[0] # 1-based
-    mass_vsite = 0.
-    n = len(vsite)
-
-    for idx, w in vsite[1:]: # 1-based
-        m = u.atoms[idx-1].mass # 0-based
-        m_partition = m / n * scale
-        mass_vsite += m_partition
-        u.atoms[idx-1].mass = m - m_partition
-    u.atoms[vsite_idx-1].mass = mass_vsite
-
-    return u
-
 def make_atomlines(u):
     lines_atoms = []
     for idx, at in enumerate(u.atoms):
@@ -254,19 +240,20 @@ def write_section(f,header,lines):
 # def assign_ashgc_charges(u,charges_ashgc):
     # for 
 
-def simplify(name,path_in,path_out,qs_cg = []):
+def simplify(name,path_in,path_out,qs_cg = [],masses_cg = []):
 
     u = mda.Universe(f'{path_in}/{name}.itp',f'{path_in}/{name}.gro')
 
     if len(qs_cg) > 0:
         u.atoms.charges = qs_cg
+    if len(masses_cg) > 0:
+        u.atoms.masses = masses_cg
 
     lines = load_itp(path_in,name)
     lines_moleculetype, lines_atoms, lines_angles, dihedrals, bonds, vsites = parse_input(lines,name)
 
     for vsite in vsites:
         bonds = add_vsite_bonds(vsite,u,bonds)
-        u = repartition_masses(vsite,u)
         # dihedrals = add_dihedral(dihedrals,vsite)
         # dihedrals.append(dihedral)
 
@@ -299,6 +286,19 @@ def coarse_grain_charges(beads,charges_heavy):
         qs_cg.append(q)
     return np.array(qs_cg)
 
+def coarse_grain_masses(beads,mol_h):
+    masses_cg = []
+    for bead in beads:
+        mass = 0.
+        for at_idx in bead:
+            atom = mol_h.GetAtomWithIdx(at_idx)
+            mass += atom.GetMass()
+            for neighbor in atom.GetNeighbors():
+                if neighbor.GetAtomicNum() == 1:
+                    mass += neighbor.GetMass()
+        masses_cg.append(mass)
+    return np.array(masses_cg)
+
 def run_simplemartini(
         name,
         mol,
@@ -310,6 +310,7 @@ def run_simplemartini(
     # print(name, mol, path_cgparam, path_out)
     cgp = CGParam()
     cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
+    masses_cg = coarse_grain_masses(cgp.beads,cgp.mol_h)
 
     if calc_charges:
         mol, charges_heavy, at_map_ids = get_heavy_atom_charges(cgp.mol)
@@ -317,4 +318,4 @@ def run_simplemartini(
     else:
         qs_cg = np.array([])
 
-    simplify(name,path_cgparam,path_out,qs_cg=qs_cg) # read in mol_martini, return an object
+    simplify(name,path_cgparam,path_out,qs_cg=qs_cg,masses_cg=masses_cg) # read in mol_martini, return an object
