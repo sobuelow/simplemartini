@@ -2,10 +2,21 @@ import os
 import re
 import tempfile
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"'xdrlib' is deprecated and slated for removal in Python 3\.13",
+    category=DeprecationWarning,
+    module=r"MDAnalysis\.topology\.TPRParser",
+)
+
 import MDAnalysis as mda
 import numpy as np
 
 from cgparam.core import CGParam
+
+from .charges import get_heavy_atom_charges
 
 def load_itp(path,name):
     if not os.path.isfile(f'{path}/{name}.itp'):
@@ -14,7 +25,7 @@ def load_itp(path,name):
     with open(f'{path}/{name}.itp','r') as f_in:
         return f_in.readlines()
 
-def parse_input(lines,name,qtype):
+def parse_input(lines,name):
     # Parse itp input lines
     section = None
     # atoms = []
@@ -35,8 +46,8 @@ def parse_input(lines,name,qtype):
             continue
         # if len(re.findall('\[',line)) > 0:
         if line[0] == '[':
-            start = re.search('\[',line).span()[0]
-            end = re.search('\]',line).span()[0]
+            start = re.search(r'\[',line).span()[0]
+            end = re.search(r'\]',line).span()[0]
             section = line[start+1:end].replace(' ','')
 
             continue
@@ -46,7 +57,6 @@ def parse_input(lines,name,qtype):
             line = re.sub('MOL',name,line)
             lines_moleculetype.append(line)
         elif section == 'atoms':
-            line = re.sub('Qx',qtype,line)
             lines_atoms.append(line)
         elif section == 'angles':
             lines_angles.append(line)
@@ -178,25 +188,10 @@ def make_bondlines(bonds):
         lines_bonds.append(line)
     return lines_bonds
 
-def repartition_masses(vsite,u,scale=1.):
-    vsite_idx = vsite[0] # 1-based
-    mass_vsite = 0.
-    n = len(vsite)
-
-    for idx, w in vsite[1:]: # 1-based
-        m = u.atoms[idx-1].mass # 0-based
-        m_partition = m / n * scale
-        mass_vsite += m_partition
-        u.atoms[idx-1].mass = m - m_partition
-    u.atoms[vsite_idx-1].mass = mass_vsite
-
-    return u
-
-def make_atomlines(u,qtype="Qx"):
+def make_atomlines(u):
     lines_atoms = []
     for idx, at in enumerate(u.atoms):
-        attype = re.sub('Qx',qtype,str(at.type))
-        line = f'{idx+1:>5d}{attype:>5s}    1{at.resname:>5s}{at.name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
+        line = f'{idx+1:>5d}{at.type:>5s}    1{at.resname:>5s}{at.name:>5s}{idx+1:>5d}     {at.charge:.3f}   {at.mass:.3f}\n'
         lines_atoms.append(line)
     return lines_atoms
 
@@ -242,14 +237,23 @@ def write_section(f,header,lines):
         f.write(line)
     f.write('\n')
 
-def simplify(name,path_in,path_out,qtype):
+# def assign_ashgc_charges(u,charges_ashgc):
+    # for 
+
+def simplify(name,path_in,path_out,qs_cg = [],masses_cg = []):
+
     u = mda.Universe(f'{path_in}/{name}.itp',f'{path_in}/{name}.gro')
+
+    if len(qs_cg) > 0:
+        u.atoms.charges = qs_cg
+    if len(masses_cg) > 0:
+        u.atoms.masses = masses_cg
+
     lines = load_itp(path_in,name)
-    lines_moleculetype, lines_atoms, lines_angles, dihedrals, bonds, vsites = parse_input(lines,name,qtype)
+    lines_moleculetype, lines_atoms, lines_angles, dihedrals, bonds, vsites = parse_input(lines,name)
 
     for vsite in vsites:
         bonds = add_vsite_bonds(vsite,u,bonds)
-        u = repartition_masses(vsite,u)
         # dihedrals = add_dihedral(dihedrals,vsite)
         # dihedrals.append(dihedral)
 
@@ -260,7 +264,7 @@ def simplify(name,path_in,path_out,qtype):
     for dihedral in flagged_dihedrals:
         bonds = repl_dihedral(dihedral,u,bonds)
 
-    lines_atoms = make_atomlines(u,qtype=qtype)
+    lines_atoms = make_atomlines(u)
     lines_bonds = make_bondlines(bonds)
 
     lines_dihedrals = make_dihedrallines(kept_dihedrals) # lines_dihedrals
@@ -273,9 +277,45 @@ def simplify(name,path_in,path_out,qtype):
     if path_in != path_out:
         os.system(f'cp {path_in}/{name}.gro {path_out}/')
 
-def run_simplemartini(name, mol, qtype = 'Qx', path_cgparam='cgparam', path_out = 'output'):
+def coarse_grain_charges(beads,charges_heavy):
+    qs_cg = []
+    for bead in beads:
+        q = 0.
+        for at_idx in bead:
+            q += charges_heavy[at_idx]
+        qs_cg.append(q)
+    return np.array(qs_cg)
+
+def coarse_grain_masses(beads,mol_h):
+    masses_cg = []
+    for bead in beads:
+        mass = 0.
+        for at_idx in bead:
+            atom = mol_h.GetAtomWithIdx(at_idx)
+            mass += atom.GetMass()
+            for neighbor in atom.GetNeighbors():
+                if neighbor.GetAtomicNum() == 1:
+                    mass += neighbor.GetMass()
+        masses_cg.append(mass)
+    return np.array(masses_cg)
+
+def run_simplemartini(
+        name,
+        mol,
+        path_cgparam='cgparam',
+        path_out = 'output',
+        calc_charges = True,
+    ):
     # with tempfile.TemporaryDirectory() as tmpdir:
-    print(name, mol, qtype, path_cgparam, path_out)
+    # print(name, mol, path_cgparam, path_out)
     cgp = CGParam()
     cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
-    simplify(name,path_cgparam,path_out,qtype) # read in mol_martini, return an object
+    masses_cg = coarse_grain_masses(cgp.beads,cgp.mol_h)
+
+    if calc_charges:
+        mol, charges_heavy, at_map_ids = get_heavy_atom_charges(cgp.mol)
+        qs_cg = coarse_grain_charges(cgp.beads, charges_heavy)
+    else:
+        qs_cg = np.array([])
+
+    simplify(name,path_cgparam,path_out,qs_cg=qs_cg,masses_cg=masses_cg) # read in mol_martini, return an object
