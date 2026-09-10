@@ -309,7 +309,7 @@ def coarse_grain_masses(beads,mol_h):
     return np.array(masses_cg)
 
 
-def _run_martini_mapper(name, mol, path_mapping, run_xtb):
+def _run_martini_mapper(name, mol, path_mapping, run_xtb, nthreads):
     """Run Martini Mapper and return bead indices in the input molecule's order."""
 
     from martini_mapper.main import run_mapping
@@ -330,6 +330,7 @@ def _run_martini_mapper(name, mol, path_mapping, run_xtb):
         write_files=True,
         out_dir=Path(path_mapping),
         dihedrals=False,
+        nthreads=nthreads,
     )
     beads_smiles_order, raw_bead_types = group_beads_by_type(final)
     beads = [
@@ -347,15 +348,24 @@ def _run_martini_mapper(name, mol, path_mapping, run_xtb):
 def run_simplemartini(
         name,
         mol,
-        path_out = 'output',
+        path_out = None, #  'output',
         calc_charges = True,
         mapping_backend = 'cgparam',
-        path_mapping = 'cgparam',
+        path_mapping = None,
         martini_mapper_run_xtb = True,
+        nthreads = 1,
         draw_overlay = True,
     ):
 
+    if path_mapping is None:
+        path_mapping = f'{mapping_backend}_tmp'
+    if path_out is None:
+        path_out = f'{mapping_backend}_out'
+
+    print(Chem.MolToSmiles(mol))
+
     if mapping_backend == 'cgparam':
+        print('Using cgparam backend')
         cgp = CGParam()
         cgp.run_pipeline(name, mol, path_out=path_mapping)
         beads = cgp.beads
@@ -363,11 +373,13 @@ def run_simplemartini(
         mol_h = cgp.mol_h
         default_charges = np.asarray(cgp.charges)
     elif mapping_backend == 'martini_mapper':
+        print('Using martini_mapper backend')
         beads, bead_types, mol_h = _run_martini_mapper(
             name,
             mol,
             path_mapping,
             run_xtb=martini_mapper_run_xtb,
+            nthreads=nthreads,
         )
         default_charges = np.zeros(len(beads))
     else:

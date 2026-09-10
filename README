@@ -12,5 +12,6 @@ keeping AshGC charge assignment and overlay generation in simplemartini:
     )
 
 Set ``martini_mapper_run_xtb=False`` to use Martini Mapper without its xTB
-parameterisation pipeline. The final overlay is written to
+parameterisation pipeline. Use ``martini_mapper_nthreads=4`` to run xTB with
+four OpenMP threads. The final overlay is written to
 ``output/ligand_overlay.svg``.
