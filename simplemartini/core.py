@@ -1,8 +1,17 @@
+import ast
 import os
 import re
-import tempfile
+import shutil
+from pathlib import Path
 
 import warnings
+
+import numpy as np
+from rdkit import Chem
+
+from cgparam.core import CGParam
+
+from .visualization import draw_mapping_overlay
 
 warnings.filterwarnings(
     "ignore",
@@ -11,12 +20,7 @@ warnings.filterwarnings(
     module=r"MDAnalysis\.topology\.TPRParser",
 )
 
-import MDAnalysis as mda
-import numpy as np
-
-from cgparam.core import CGParam
-
-from .charges import get_heavy_atom_charges
+import MDAnalysis as mda  # noqa: E402
 
 def load_itp(path,name):
     if not os.path.isfile(f'{path}/{name}.itp'):
@@ -33,7 +37,6 @@ def parse_input(lines,name):
     lines_atoms = []
 
     bonds = []
-    constraints = []
     dihedrals = []
     lines_angles = []
     # lines_dihedrals = []
@@ -274,16 +277,22 @@ def simplify(name,path_in,path_out,qs_cg = [],masses_cg = []):
     fname = f'{path_out}/{name}.itp'
     write_itp(fname,lines_moleculetype, lines_atoms, lines_bonds, lines_angles, lines_dihedrals)
 
-    if path_in != path_out:
-        os.system(f'cp {path_in}/{name}.gro {path_out}/')
+    if Path(path_in) != Path(path_out):
+        shutil.copy2(Path(path_in) / f'{name}.gro', path_out)
 
-def coarse_grain_charges(beads,charges_heavy):
+def coarse_grain_charges(beads, charges_heavy, heavy_atom_indices=None):
+    if heavy_atom_indices is None:
+        heavy_atom_indices = range(len(charges_heavy))
+    charge_by_atom = dict(zip(heavy_atom_indices, charges_heavy))
+
     qs_cg = []
     for bead in beads:
-        q = 0.
-        for at_idx in bead:
-            q += charges_heavy[at_idx]
-        qs_cg.append(q)
+        try:
+            qs_cg.append(sum(charge_by_atom[at_idx] for at_idx in bead))
+        except KeyError as error:
+            raise ValueError(
+                f'Bead mapping contains atom {error.args[0]}, which has no heavy-atom charge.'
+            ) from error
     return np.array(qs_cg)
 
 def coarse_grain_masses(beads,mol_h):
@@ -299,23 +308,104 @@ def coarse_grain_masses(beads,mol_h):
         masses_cg.append(mass)
     return np.array(masses_cg)
 
+
+def _run_martini_mapper(name, mol, path_mapping, run_xtb, nthreads):
+    """Run Martini Mapper and return bead indices in the input molecule's order."""
+
+    from martini_mapper.main import run_mapping
+    from martini_mapper.outputs import fix_beadtypes, group_beads_by_type
+
+    if any(atom.GetAtomicNum() == 1 for atom in mol.GetAtoms()):
+        raise ValueError('Martini Mapper integration expects a molecule with implicit hydrogens.')
+
+    # Martini Mapper reparses SMILES, so translate its atom indices back to the
+    # input molecule. RDKit records this permutation whenever it writes SMILES.
+    smiles = Chem.MolToSmiles(mol, canonical=False)
+    smiles_atom_order = ast.literal_eval(mol.GetProp('_smilesAtomOutputOrder'))
+
+    final, _ = run_mapping(
+        name,
+        smiles,
+        run_xtb=run_xtb,
+        write_files=True,
+        out_dir=Path(path_mapping),
+        dihedrals=False,
+        nthreads=nthreads,
+    )
+    beads_smiles_order, raw_bead_types = group_beads_by_type(final)
+    beads = [
+        [smiles_atom_order[atom_idx] for atom_idx in bead]
+        for bead in beads_smiles_order
+    ]
+
+    mapped_atoms = sorted(atom_idx for bead in beads for atom_idx in bead)
+    expected_atoms = list(range(mol.GetNumAtoms()))
+    if mapped_atoms != expected_atoms:
+        raise RuntimeError('Martini Mapper did not map every input heavy atom exactly once.')
+
+    return beads, fix_beadtypes(raw_bead_types), Chem.AddHs(Chem.Mol(mol))
+
 def run_simplemartini(
         name,
         mol,
-        path_cgparam='cgparam',
-        path_out = 'output',
+        path_out = None, #  'output',
         calc_charges = True,
+        mapping_backend = 'cgparam',
+        path_mapping = None,
+        martini_mapper_run_xtb = True,
+        nthreads = 1,
+        draw_overlay = True,
     ):
-    # with tempfile.TemporaryDirectory() as tmpdir:
-    # print(name, mol, path_cgparam, path_out)
-    cgp = CGParam()
-    cgp.run_pipeline(name, mol, path_out = path_cgparam) # mol_martini = ...
-    masses_cg = coarse_grain_masses(cgp.beads,cgp.mol_h)
+
+    if path_mapping is None:
+        path_mapping = f'{mapping_backend}_tmp'
+    if path_out is None:
+        path_out = f'{mapping_backend}_out'
+
+    print(Chem.MolToSmiles(mol))
+
+    if mapping_backend == 'cgparam':
+        print('Using cgparam backend')
+        cgp = CGParam()
+        cgp.run_pipeline(name, mol, path_out=path_mapping)
+        beads = cgp.beads
+        bead_types = cgp.bead_types
+        mol_h = cgp.mol_h
+        default_charges = np.asarray(cgp.charges)
+    elif mapping_backend == 'martini_mapper':
+        print('Using martini_mapper backend')
+        beads, bead_types, mol_h = _run_martini_mapper(
+            name,
+            mol,
+            path_mapping,
+            run_xtb=martini_mapper_run_xtb,
+            nthreads=nthreads,
+        )
+        default_charges = np.zeros(len(beads))
+    else:
+        raise ValueError(
+            "mapping_backend must be either 'cgparam' or 'martini_mapper'."
+        )
+
+    masses_cg = coarse_grain_masses(beads, mol_h)
 
     if calc_charges:
-        mol, charges_heavy, at_map_ids = get_heavy_atom_charges(cgp.mol)
-        qs_cg = coarse_grain_charges(cgp.beads, charges_heavy)
+        from .charges import get_heavy_atom_charges
+
+        mol_with_charges, charges_heavy, heavy_atom_indices = get_heavy_atom_charges(mol)
+        qs_cg = coarse_grain_charges(beads, charges_heavy, heavy_atom_indices)
     else:
+        mol_with_charges = Chem.Mol(mol)
         qs_cg = np.array([])
 
-    simplify(name,path_cgparam,path_out,qs_cg=qs_cg,masses_cg=masses_cg) # read in mol_martini, return an object
+    simplify(name, path_mapping, path_out, qs_cg=qs_cg, masses_cg=masses_cg)
+
+    if draw_overlay:
+        overlay_charges = qs_cg if len(qs_cg) else default_charges
+        draw_mapping_overlay(
+            mol_with_charges,
+            beads,
+            bead_types,
+            overlay_charges,
+            Path(path_out) / f'{name}_overlay.svg',
+        )
